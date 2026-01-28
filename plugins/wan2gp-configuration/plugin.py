@@ -29,6 +29,7 @@ class ConfigTabPlugin(WAN2GPPlugin):
         self.request_global("attention_modes_supported")
         self.request_global("displayed_model_types")
         self.request_global("memory_profile_choices")
+        self.request_global("attention_modes_choices")
         self.request_global("save_path")
         self.request_global("image_save_path")
         self.request_global("audio_save_path")
@@ -87,22 +88,8 @@ class ConfigTabPlugin(WAN2GPPlugin):
                         interactive=not self.args.lock_config
                     )
 
-                    def check_attn(mode):
-                        if mode not in self.attention_modes_installed: return " (NOT INSTALLED)"
-                        if mode not in self.attention_modes_supported: return " (NOT SUPPORTED)"
-                        return ""
-
                     self.attention_choice = gr.Dropdown(
-                        choices=[
-                            ("Auto: Best available (sage2 > sage > sdpa)", "auto"),
-                            ("sdpa: Default, always available", "sdpa"),
-                            (f'flash{check_attn("flash")}: High quality, requires manual install', "flash"),
-                            (f'xformers{check_attn("xformers")}: Good quality, less VRAM, requires manual install', "xformers"),
-                            (f'sage{check_attn("sage")}: ~30% faster, requires manual install', "sage"),
-                            (f'sage2/sage2++{check_attn("sage2")}: ~40% faster, requires manual install', "sage2"),
-                        ] + ([(f'radial{check_attn("radial")}: Experimental, may be faster, requires manual install', "radial")] if self.args.betatest else []) + [
-                            (f'sage3{check_attn("sage3")}: >50% faster, may have quality trade-offs, requires manual install', "sage3"),
-                        ],
+                        choices=self.attention_modes_choices,
                         value=self.attention_mode, label="Attention Type", interactive=not self.args.lock_config
                     )
                     self.preload_model_policy_choice = gr.CheckboxGroup(
@@ -132,6 +119,11 @@ class ConfigTabPlugin(WAN2GPPlugin):
                         label="Model Checkpoint Folders (One Path per Line. First is Default Download Path)",
                         value=checkpoints_paths_text,
                         lines=3,
+                        interactive=not self.args.lock_config
+                    )
+                    self.loras_root_choice = gr.Textbox(
+                        label="Loras Root Folder",
+                        value=self.server_config.get("loras_root", "loras"),
                         interactive=not self.args.lock_config
                     )
                     self.UI_theme_choice = gr.Dropdown(
@@ -183,8 +175,31 @@ class ConfigTabPlugin(WAN2GPPlugin):
                     self.release_RAM_btn = gr.Button("Force Unload Models from RAM")
 
                 with gr.Tab("Extensions"):
-                    self.enhancer_enabled_choice = gr.Dropdown(choices=[("Off", 0), ("Florence 2 + LLama 3.2", 1), ("Florence 2 + Llama Joy (uncensored)", 2)], value=self.server_config.get("enhancer_enabled", 0), label="Prompt Enhancer (requires 8-14GB extra download)")
-                    self.enhancer_mode_choice = gr.Dropdown(choices=[("Automatic on Generation", 0), ("On-Demand Button Only", 1)], value=self.server_config.get("enhancer_mode", 0), label="Prompt Enhancer Usage")
+                    with gr.Group():
+                        self.enhancer_enabled_choice = gr.Dropdown(choices=[("Off", 0), ("Florence 2 + LLama 3.2", 1), ("Florence 2 + Llama Joy (uncensored)", 2)], value=self.server_config.get("enhancer_enabled", 0), label="Prompt Enhancer (requires 8-14GB extra download)")
+                        self.enhancer_mode_choice = gr.Dropdown(choices=[("Automatic on Generation", 0), ("On-Demand Button Only", 1)], value=self.server_config.get("enhancer_mode", 0), label="Prompt Enhancer Usage")
+                    with gr.Row():
+                        self.prompt_enhancer_temperature_choice = gr.Slider(
+                            0.1,
+                            1.5,
+                            value=self.server_config.get("prompt_enhancer_temperature", 0.6),
+                            step=0.01,
+                            label="Prompt Enhancer Temperature (High = More Creativity)",
+                            interactive=not self.args.lock_config,
+                        )
+                        self.prompt_enhancer_top_p_choice = gr.Slider(
+                            0.1,
+                            1.0,
+                            value=self.server_config.get("prompt_enhancer_top_p", 0.9),
+                            step=0.01,
+                            label="Prompt Enhancer Top-p (High = More Variety)",
+                            interactive=not self.args.lock_config,
+                        )
+                    self.prompt_enhancer_randomize_seed_choice = gr.Checkbox(
+                        value=self.server_config.get("prompt_enhancer_randomize_seed", True),
+                        label="Randomize Prompt Enhancer Seed",
+                        interactive=not self.args.lock_config,
+                    )
                     mmaudio_mode_default = self.server_config.get("mmaudio_mode", None)
                     mmaudio_persistence_default = self.server_config.get("mmaudio_persistence", None)
                     if mmaudio_mode_default is None:
@@ -254,14 +269,16 @@ class ConfigTabPlugin(WAN2GPPlugin):
             self.state,
             self.transformer_types_choices, self.model_hierarchy_type_choice, self.fit_canvas_choice,
             self.attention_choice, self.preload_model_policy_choice, self.clear_file_list_choice,
-            self.display_stats_choice, self.max_frames_multiplier_choice, self.enable_4k_resolutions_choice, self.checkpoints_paths_choice,
+            self.display_stats_choice, self.max_frames_multiplier_choice, self.enable_4k_resolutions_choice, self.checkpoints_paths_choice, self.loras_root_choice,
             self.UI_theme_choice, self.queue_color_scheme_choice,
             self.quantization_choice, self.transformer_dtype_policy_choice, self.mixed_precision_choice,
             self.text_encoder_quantization_choice, self.VAE_precision_choice, self.compile_choice,
             self.depth_anything_v2_variant_choice, self.vae_config_choice, self.boost_choice,
             self.video_profile_choice, self.image_profile_choice, self.audio_profile_choice,
             self.preload_in_VRAM_choice, self.max_reserved_loras_choice,
-            self.enhancer_enabled_choice, self.enhancer_mode_choice, self.mmaudio_mode_choice, self.mmaudio_persistence_choice, self.rife_version_choice,
+            self.enhancer_enabled_choice, self.enhancer_mode_choice,
+            self.prompt_enhancer_temperature_choice, self.prompt_enhancer_top_p_choice, self.prompt_enhancer_randomize_seed_choice,
+            self.mmaudio_mode_choice, self.mmaudio_persistence_choice, self.rife_version_choice,
             self.video_output_codec_choice, self.image_output_codec_choice, self.audio_output_codec_choice, self.audio_stand_alone_output_codec_choice,
             self.metadata_choice, self.embed_source_images_choice,
             self.video_save_path_choice, self.image_save_path_choice, self.audio_save_path_choice,
@@ -293,8 +310,8 @@ class ConfigTabPlugin(WAN2GPPlugin):
         return [self.release_RAM_btn]
 
     def _save_changes(self, state, *args):
-        if self.is_generation_in_progress():
-            return "<div style='color:red; text-align:center;'>Unable to change config when a generation is in progress.</div>", *[gr.update()]*5
+        gen_in_progress = self.is_generation_in_progress()
+        # return "<div style='color:red; text-align:center;'>Unable to change config when a generation is in progress.</div>", *[gr.update()]*5
 
         if self.args.lock_config:
             return "<div style='color:red; text-align:center;'>Configuration is locked by command-line arguments.</div>", *[gr.update()]*5
@@ -304,14 +321,16 @@ class ConfigTabPlugin(WAN2GPPlugin):
         (
             transformer_types_choices, model_hierarchy_type_choice, fit_canvas_choice,
             attention_choice, preload_model_policy_choice, clear_file_list_choice,
-            display_stats_choice, max_frames_multiplier_choice, enable_4k_resolutions_choice, checkpoints_paths_choice,
+            display_stats_choice, max_frames_multiplier_choice, enable_4k_resolutions_choice, checkpoints_paths_choice, loras_root_choice,
             UI_theme_choice, queue_color_scheme_choice,
             quantization_choice, transformer_dtype_policy_choice, mixed_precision_choice,
             text_encoder_quantization_choice, VAE_precision_choice, compile_choice,
             depth_anything_v2_variant_choice, vae_config_choice, boost_choice,
             video_profile_choice, image_profile_choice, audio_profile_choice,
             preload_in_VRAM_choice, max_reserved_loras_choice,
-            enhancer_enabled_choice, enhancer_mode_choice, mmaudio_mode_choice, mmaudio_persistence_choice, rife_version_choice,
+            enhancer_enabled_choice, enhancer_mode_choice,
+            prompt_enhancer_temperature_choice, prompt_enhancer_top_p_choice, prompt_enhancer_randomize_seed_choice,
+            mmaudio_mode_choice, mmaudio_persistence_choice, rife_version_choice,
             video_output_codec_choice, image_output_codec_choice, audio_output_codec_choice, audio_stand_alone_output_codec_choice,
             metadata_choice, embed_source_images_choice,
             save_path_choice, image_save_path_choice, audio_save_path_choice,
@@ -343,6 +362,9 @@ class ConfigTabPlugin(WAN2GPPlugin):
             "enhancer_mode": enhancer_mode_choice, "mmaudio_mode": mmaudio_mode_choice,
             "mmaudio_persistence": mmaudio_persistence_choice, "mmaudio_enabled": mmaudio_enabled_choice,
             "rife_version": rife_version_choice,
+            "prompt_enhancer_temperature": prompt_enhancer_temperature_choice,
+            "prompt_enhancer_top_p": prompt_enhancer_top_p_choice,
+            "prompt_enhancer_randomize_seed": prompt_enhancer_randomize_seed_choice,
             "preload_in_VRAM": preload_in_VRAM_choice, "depth_anything_v2_variant": depth_anything_v2_variant_choice,
             "notification_sound_enabled": notification_sound_enabled_choice,
             "notification_sound_volume": notification_sound_volume_choice,
@@ -354,6 +376,7 @@ class ConfigTabPlugin(WAN2GPPlugin):
             "audio_stand_alone_output_codec": audio_stand_alone_output_codec_choice,
             "model_hierarchy_type": model_hierarchy_type_choice,
             "checkpoints_paths": checkpoints_paths,
+            "loras_root": loras_root_choice,
             "queue_color_scheme": queue_color_scheme_choice,
             "embed_source_images": embed_source_images_choice,
             "video_container": "mp4", # Fixed to MP4
@@ -381,8 +404,9 @@ class ConfigTabPlugin(WAN2GPPlugin):
             "metadata_type", "clear_file_list", "fit_canvas", "depth_anything_v2_variant",
             "notification_sound_enabled", "notification_sound_volume", "mmaudio_mode",
             "mmaudio_persistence", "mmaudio_enabled", "rife_version",
+            "prompt_enhancer_temperature", "prompt_enhancer_top_p", "prompt_enhancer_randomize_seed",
             "max_frames_multiplier", "display_stats", "enable_4k_resolutions", "max_reserved_loras", "video_output_codec", "video_container",
-            "embed_source_images", "image_output_codec", "audio_output_codec", "audio_stand_alone_output_codec", "checkpoints_paths",
+            "embed_source_images", "image_output_codec", "audio_output_codec", "audio_stand_alone_output_codec", "checkpoints_paths", "loras_root",
             "model_hierarchy_type", "UI_theme", "queue_color_scheme"
         ]
 
@@ -422,9 +446,14 @@ class ConfigTabPlugin(WAN2GPPlugin):
         
         model_family_update, model_base_type_update, model_choice_update = self.generate_dropdown_model_list(model_type)
         header_update = self.generate_header(model_type, compile=new_server_config["compile"], attention_mode=new_server_config["attention_mode"])
-        
-        return (
-            "<div style='color:green; text-align:center;'>The new configuration has been succesfully applied.</div>",
+
+        if gen_in_progress:
+            msg = "<div style='color:green; text-align:center;'>The new configuration has been succesfully applied. Some of the Settings will be only effective when you will start another Generation</div>"
+        else:
+            msg = "<div style='color:green; text-align:center;'>The new configuration has been succesfully applied.</div>"
+
+        return (msg
+            ,
             header_update,
             model_family_update,
             model_base_type_update,
