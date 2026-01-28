@@ -33,14 +33,18 @@ WORKDIR /workspace
 COPY requirements.txt .
 
 # Upgrade pip first
-RUN pip install --upgrade pip setuptools wheel
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install requirements if exists
-RUN pip install -r requirements.txt
-
-# Install PyTorch with CUDA support
-RUN pip install --extra-index-url https://download.pytorch.org/whl/cu124 \
+# Install PyTorch dependencies individually to avoid timeouts and create cache layers
+RUN pip install --no-cache-dir --retries 10 --extra-index-url https://download.pytorch.org/whl/cu124 \
+    nvidia-cudnn-cu12==9.1.0.70
+RUN pip install --no-cache-dir --retries 10 --extra-index-url https://download.pytorch.org/whl/cu124 \
+    nvidia-cublas-cu12==12.4.5.8
+RUN pip install --no-cache-dir --retries 10 --extra-index-url https://download.pytorch.org/whl/cu124 \
     torch==2.6.0+cu124 torchvision==0.21.0+cu124
+
+# Install requirements (moving largest ones to their own layer if needed, starting with general)
+RUN pip install --no-cache-dir --retries 10 -r requirements.txt
 
 # Install SageAttention from git (patch GPU detection)
 ENV TORCH_CUDA_ARCH_LIST="${CUDA_ARCHITECTURES}"
